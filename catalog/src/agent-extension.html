@@ -1,0 +1,101 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><link rel="stylesheet" href="common.css">
+<style>.mono, .mono text { font-family: "IBM Plex Mono"; white-space: pre; } .sans { font-family: "IBM Plex Sans"; } h1 { font-size: 78px; }</style></head>
+<body>
+<div class="left">
+  <img class="logo" src="logo-dark.svg" alt="CivOps">
+  <div class="kicker">SPECIFICATION · i3X AGENT EXTENSION</div>
+  <h1>Every agent<br><span>has a sponsor</span></h1>
+  <div class="tag">AI agents work for a named person, inside their part of the plant, on a budget, with one switch that stops them all.</div>
+  <div class="chips">
+    <span class="chip on">Level 5 · i3X Nexus Profile</span>
+    <span class="chip">MCP server</span>
+    <span class="chip">Freeze switch</span>
+    <span class="chip">Signed approvals</span>
+    <span class="chip">Anchored ledger</span>
+  </div>
+</div>
+<svg class="art" viewBox="0 0 820 800" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <radialGradient id="glow" cx="50%" cy="50%" r="50%"><stop offset="0%" stop-color="#2563eb" stop-opacity=".40"/><stop offset="100%" stop-color="#2563eb" stop-opacity="0"/></radialGradient>
+    <marker id="arr" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="#93c5fd"/></marker>
+  </defs>
+  <circle cx="420" cy="380" r="340" fill="url(#glow)"/>
+
+  <!-- the grant card -->
+  <g transform="translate(20 40)">
+    <rect width="420" height="300" rx="16" fill="#131e33" stroke="#3b82f6" stroke-width="3"/>
+    <text x="24" y="40" class="mono" font-size="14" fill="#93c5fd" letter-spacing="2">GRANT  g7Qm…</text>
+    <text x="24" y="80" class="sans" font-weight="700" font-size="24" fill="#f1f5f9">agent:scheduler</text>
+    <g class="mono" font-size="15">
+      <text x="24" y="118" fill="#a5b4c8">for      </text><text x="120" y="118" fill="#f1f5f9">Sample planner</text>
+      <text x="24" y="146" fill="#a5b4c8">task     </text><text x="120" y="146" fill="#f1f5f9">re-plan line 2 this week</text>
+      <text x="24" y="174" fill="#a5b4c8">areas    </text><text x="120" y="174" fill="#f1f5f9">wc:line2 · cmms</text>
+      <text x="24" y="202" fill="#a5b4c8">may      </text><text x="120" y="202" fill="#f1f5f9">read · request W1</text>
+      <text x="24" y="230" fill="#a5b4c8">ends     </text><text x="120" y="230" fill="#f1f5f9">in 60 min</text>
+    </g>
+    <text x="24" y="270" class="mono" font-size="14" fill="#a5b4c8">requests</text>
+    <rect x="120" y="257" width="270" height="16" rx="8" fill="#22314d"/>
+    <rect x="120" y="257" width="108" height="16" rx="8" fill="#3b82f6"/>
+    <text x="396" y="270" text-anchor="end" class="mono" font-size="13" fill="#f1f5f9"></text>
+    <text x="236" y="290" class="mono" font-size="13" fill="#a5b4c8">2 of 5 used</text>
+  </g>
+
+  <!-- MCP tools -->
+  <g transform="translate(480 40)">
+    <rect width="320" height="300" rx="16" fill="#131e33" stroke="#334a6e" stroke-width="2"/>
+    <text x="24" y="40" class="mono" font-size="14" fill="#93c5fd" letter-spacing="2">POST /mcp</text>
+    <g class="mono" font-size="16" fill="#f1f5f9">
+      <text x="24" y="80">browse</text>
+      <text x="24" y="110">read_values</text>
+      <text x="24" y="140">read_history</text>
+      <text x="24" y="170">request_change</text>
+      <text x="24" y="200">request_setpoint</text>
+      <text x="24" y="230">check_request</text>
+      <text x="24" y="260">my_grant</text>
+    </g>
+    <text x="296" y="230" text-anchor="end" class="mono" font-size="13" fill="#ef4444">no approve tool</text>
+    <text x="24" y="288" class="mono" font-size="12" fill="#a5b4c8">same checks as i3X, as the caller</text>
+  </g>
+
+  <!-- the governed path -->
+  <g transform="translate(20 390)">
+    <text x="0" y="0" class="mono" font-size="14" fill="#a5b4c8">the ledger reads: agent:scheduler, for Sample planner, on its grant</text>
+    <g class="mono" font-size="15" transform="translate(0 22)">
+      <rect width="150" height="50" rx="10" fill="#172338" stroke="#334a6e"/><text x="75" y="31" text-anchor="middle" fill="#f1f5f9">requested</text>
+      <rect x="170" width="190" height="50" rx="10" fill="#172338" stroke="#22c55e"/><text x="265" y="31" text-anchor="middle" fill="#f1f5f9">approved · signed</text>
+      <rect x="380" width="130" height="50" rx="10" fill="#172338" stroke="#334a6e"/><text x="445" y="31" text-anchor="middle" fill="#f1f5f9">applied</text>
+      <rect x="530" width="140" height="50" rx="10" fill="#172338" stroke="#22c55e"/><text x="600" y="31" text-anchor="middle" fill="#22c55e">verified</text>
+    </g>
+    <text x="170" y="104" class="mono" font-size="13" fill="#ef4444">the sponsor may not approve</text>
+  </g>
+
+  <!-- freeze -->
+  <g transform="translate(20 540)">
+    <rect width="360" height="150" rx="16" fill="#131e33" stroke="#f59e0b" stroke-width="2"/>
+    <text x="24" y="40" class="mono" font-size="14" fill="#f59e0b" letter-spacing="2">FREEZE</text>
+    <rect x="24" y="62" width="96" height="44" rx="22" fill="#f59e0b"/>
+    <circle cx="98" cy="84" r="17" fill="#131e33"/>
+    <text x="140" y="80" class="sans" font-size="17" fill="#f1f5f9">agent writes stop</text>
+    <text x="140" y="104" class="sans" font-size="17" fill="#a5b4c8">people carry on</text>
+    <text x="24" y="134" class="mono" font-size="13" fill="#a5b4c8">approved agent requests are held</text>
+  </g>
+
+  <!-- anchor -->
+  <g transform="translate(410 540)">
+    <rect width="390" height="150" rx="16" fill="#131e33" stroke="#334a6e" stroke-width="2"/>
+    <text x="24" y="40" class="mono" font-size="14" fill="#93c5fd" letter-spacing="2">LEDGER ANCHOR</text>
+    <g class="mono" font-size="13">
+      <rect x="24" y="58" width="72" height="34" rx="6" fill="#172338" stroke="#334a6e"/><text x="60" y="80" text-anchor="middle" fill="#a5b4c8">#a41f…</text>
+      <rect x="112" y="58" width="72" height="34" rx="6" fill="#172338" stroke="#334a6e"/><text x="148" y="80" text-anchor="middle" fill="#a5b4c8">#07c2…</text>
+      <rect x="200" y="58" width="72" height="34" rx="6" fill="#172338" stroke="#22c55e"/><text x="236" y="80" text-anchor="middle" fill="#22c55e">#e9b0…</text>
+    </g>
+    <path d="M272 75 L 300 75" stroke="#93c5fd" stroke-width="2" marker-end="url(#arr)"/>
+    <text x="310" y="72" class="mono" font-size="13" fill="#f1f5f9">signed,</text>
+    <text x="310" y="90" class="mono" font-size="13" fill="#f1f5f9">kept off</text>
+    <text x="310" y="108" class="mono" font-size="13" fill="#f1f5f9">the DB</text>
+    <text x="24" y="134" class="mono" font-size="13" fill="#a5b4c8">a rewritten ledger no longer matches</text>
+  </g>
+</svg>
+<div class="foot">CivOps · civops.io · builds on the i3X Nexus Profile (LNS Research) · synthetic example data</div>
+</body></html>
