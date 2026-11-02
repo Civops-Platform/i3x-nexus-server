@@ -1,0 +1,140 @@
+{
+  "ranAt": "2026-10-30T15:05:31.829Z",
+  "cycles": 20,
+  "leaseTtlMs": 10000,
+  "writeRtoMs": {
+    "max": 12485,
+    "median": 11954,
+    "all": [
+      {
+        "cycle": 1,
+        "killed": "a",
+        "rtoMs": 9883,
+        "takeoverMs": 9080
+      },
+      {
+        "cycle": 2,
+        "killed": "b",
+        "rtoMs": 12226,
+        "takeoverMs": 11473
+      },
+      {
+        "cycle": 3,
+        "killed": "a",
+        "rtoMs": 11690,
+        "takeoverMs": 11183
+      },
+      {
+        "cycle": 4,
+        "killed": "b",
+        "rtoMs": 12044,
+        "takeoverMs": 11159
+      },
+      {
+        "cycle": 5,
+        "killed": "a",
+        "rtoMs": 12463,
+        "takeoverMs": 11474
+      },
+      {
+        "cycle": 6,
+        "killed": "b",
+        "rtoMs": 11774,
+        "takeoverMs": 11266
+      },
+      {
+        "cycle": 7,
+        "killed": "a",
+        "rtoMs": 11954,
+        "takeoverMs": 11626
+      },
+      {
+        "cycle": 8,
+        "killed": "b",
+        "rtoMs": 10132,
+        "takeoverMs": 9186
+      },
+      {
+        "cycle": 9,
+        "killed": "a",
+        "rtoMs": 12485,
+        "takeoverMs": 11594
+      },
+      {
+        "cycle": 10,
+        "killed": "b",
+        "rtoMs": 11632,
+        "takeoverMs": 10953
+      },
+      {
+        "cycle": 11,
+        "killed": "a",
+        "rtoMs": 12453,
+        "takeoverMs": 11477
+      },
+      {
+        "cycle": 12,
+        "killed": "b",
+        "rtoMs": 10352,
+        "takeoverMs": 9338
+      },
+      {
+        "cycle": 13,
+        "killed": "a",
+        "rtoMs": 12190,
+        "takeoverMs": 11511
+      },
+      {
+        "cycle": 14,
+        "killed": "b",
+        "rtoMs": 12340,
+        "takeoverMs": 10980
+      },
+      {
+        "cycle": 15,
+        "killed": "a",
+        "rtoMs": 9693,
+        "takeoverMs": 8802
+      },
+      {
+        "cycle": 16,
+        "killed": "b",
+        "rtoMs": 9891,
+        "takeoverMs": 9128
+      },
+      {
+        "cycle": 17,
+        "killed": "a",
+        "rtoMs": 11952,
+        "takeoverMs": 11650
+      },
+      {
+        "cycle": 18,
+        "killed": "b",
+        "rtoMs": 12368,
+        "takeoverMs": 11664
+      },
+      {
+        "cycle": 19,
+        "killed": "a",
+        "rtoMs": 11882,
+        "takeoverMs": 11590
+      },
+      {
+        "cycle": 20,
+        "killed": "b",
+        "rtoMs": 12262,
+        "takeoverMs": 11348
+      }
+    ]
+  },
+  "target": {
+    "writeRtoMs": 30000
+  },
+  "acknowledgedWrites": 111,
+  "ledgerRows": 112,
+  "duplicated": [],
+  "lost": [],
+  "chain": "intact",
+  "pass": true
+}

@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 226 48" role="img" aria-label="CivOps Platform">
+  <defs>
+    <linearGradient id="axg" x1="0" x2="1" y1="0" y2="0">
+      <stop offset="0%"  stop-color="#1d4ed8"/>
+      <stop offset="100%" stop-color="#2563eb"/>
+    </linearGradient>
+  </defs>
+  <g transform="translate(8 6)">
+    <rect width="36" height="36" rx="6" fill="url(#axg)"/>
+    <path d="M8 28 L18 8 L28 28 M11.5 21 L24.5 21" stroke="#ffffff" stroke-width="2.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+  <text x="56" y="32" font-family="Helvetica, Arial, sans-serif" font-weight="700" font-size="20" fill="#0f172a">CivOps</text>
+  <text x="133" y="32" font-family="Helvetica, Arial, sans-serif" font-weight="400" font-size="13" fill="#475569">Manufacturing</text>
+</svg>

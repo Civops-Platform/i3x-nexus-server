@@ -1,0 +1,22 @@
+/* Shared look for the Catalog images: CivOps blue and slate, from the logo itself. */
+@import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap");
+:root {
+  --slate: #0f172a; --slate-2: #172338; --slate-3: #22314d; --edge: #334a6e;
+  --blue: #2563eb; --blue-2: #3b82f6; --blue-soft: #93c5fd; --ink: #f1f5f9; --muted: #a5b4c8; --dim: #6b7d96;
+  --ok: #22c55e; --warn: #f59e0b; --stop: #ef4444;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { width: 1600px; height: 900px; overflow: hidden; position: relative; color: var(--ink);
+  font-family: "IBM Plex Sans", "Segoe UI", sans-serif; -webkit-font-smoothing: antialiased;
+  background: radial-gradient(1100px 760px at 76% 50%, #1b2d52 0%, var(--slate) 62%, #0a1020 100%); }
+.left { position: absolute; left: 88px; top: 0; bottom: 0; width: 640px; display: flex; flex-direction: column; justify-content: center; gap: 24px; }
+.logo { width: 300px; margin-left: -10px; }
+.kicker { font: 600 18px "IBM Plex Mono", monospace; letter-spacing: .14em; color: var(--blue-soft); }
+h1 { font-size: 84px; font-weight: 700; line-height: .98; letter-spacing: -.02em; }
+h1 span { color: var(--blue-2); }
+.tag { font-size: 28px; line-height: 1.32; color: var(--ink); max-width: 620px; }
+.chips { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 4px; }
+.chip { font: 500 17px "IBM Plex Mono", monospace; padding: 7px 14px; border: 1px solid var(--edge); border-radius: 999px; color: var(--muted); }
+.chip.on { border-color: var(--blue-2); color: #fff; background: rgba(37,99,235,.22); }
+svg.art { position: absolute; right: 40px; top: 50px; width: 820px; height: 800px; }
+.foot { position: absolute; left: 88px; bottom: 34px; font: 500 15px "IBM Plex Mono", monospace; color: var(--dim); letter-spacing: .04em; }

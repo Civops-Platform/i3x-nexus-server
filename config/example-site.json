@@ -1,0 +1,61 @@
+{
+  "site": { "id": "example-riverside", "name": "Example Manufacturing Co. — Riverside (synthetic)" },
+  "namespaces": [
+    { "uri": "https://isa.org/isa95", "name": "ISA-95", "version": "1.0" },
+    { "uri": "https://example.com/i3x/plant/1.0", "name": "Example plant", "version": "1.0" },
+    { "uri": "https://example.com/i3x/conclusions/1.0", "name": "Example conclusions", "version": "1.0" },
+    { "uri": "https://example.com/i3x/signals/1.0", "name": "Example outbound signals", "version": "1.0" }
+  ],
+  "relationshipTypes": [["Monitors", "MonitoredBy"], ["Observes", "ObservedBy"]],
+  "types": [
+    { "id": "ShipEtaSignal", "name": "Customer ship ETA", "namespaceUri": "https://example.com/i3x/signals/1.0", "kind": "record", "write": "W0", "priority": "P2",
+      "attributes": [ { "name": "status", "dataType": "string", "enum": ["clear", "active"] }, { "name": "order", "dataType": "string" },
+                      { "name": "eta", "dataType": "string" }, { "name": "note", "dataType": "string" } ] },
+    { "id": "DecisionRecord", "name": "Decision record", "namespaceUri": "https://example.com/i3x/conclusions/1.0", "kind": "record", "write": "W0", "priority": "P2",
+      "attributes": [ { "name": "statement", "dataType": "string" }, { "name": "owner", "dataType": "string" },
+                      { "name": "falsification", "dataType": "object" }, { "name": "status", "dataType": "string", "enum": ["open", "holding", "not_holding", "inconclusive", "closed"] } ] },
+    { "id": "OutcomeObservation", "name": "Outcome observation", "namespaceUri": "https://example.com/i3x/conclusions/1.0", "kind": "record", "write": "W0", "priority": "P2",
+      "attributes": [ { "name": "result", "dataType": "string", "enum": ["holding", "not_holding", "inconclusive"] }, { "name": "measured", "dataType": "number" },
+                      { "name": "target", "dataType": "string" }, { "name": "sampleCount", "dataType": "integer" }, { "name": "observedAt", "dataType": "string" } ] },
+    { "id": "Enterprise", "name": "Enterprise", "namespaceUri": "https://isa.org/isa95", "kind": "folder", "attributes": [] },
+    { "id": "Site", "name": "Site", "namespaceUri": "https://isa.org/isa95", "kind": "folder", "attributes": [] },
+    { "id": "Area", "name": "Area", "namespaceUri": "https://isa.org/isa95", "kind": "folder", "attributes": [] },
+    { "id": "WorkCenter", "name": "Work center", "namespaceUri": "https://isa.org/isa95", "kind": "folder", "attributes": [] },
+    { "id": "Filler", "name": "Filler", "namespaceUri": "https://example.com/i3x/plant/1.0", "kind": "realtime", "priority": "P1",
+      "attributes": [ { "name": "speed", "dataType": "number", "unit": "bottles/min" }, { "name": "state", "dataType": "string", "enum": ["Running", "Idle", "Starved", "Fault"] },
+                      { "name": "temperature", "dataType": "number", "unit": "degC" } ] },
+    { "id": "AnalogTag", "name": "Analog tag", "namespaceUri": "https://example.com/i3x/plant/1.0", "kind": "realtime", "priority": "P1",
+      "attributes": [ { "name": "value", "dataType": "number" } ] },
+    { "id": "Alarm", "name": "Alarm", "namespaceUri": "https://example.com/i3x/plant/1.0", "kind": "realtime", "priority": "P0",
+      "attributes": [ { "name": "value", "dataType": "boolean" } ] },
+    { "id": "MediaStream", "name": "Media stream", "namespaceUri": "https://example.com/i3x/plant/1.0", "kind": "stream", "priority": "P1",
+      "attributes": [ { "name": "codec", "dataType": "string" }, { "name": "resolution", "dataType": "string" }, { "name": "viewerUrl", "dataType": "string" },
+                      { "name": "online", "dataType": "boolean" }, { "name": "fps", "dataType": "number" } ] }
+  ],
+  "objects": [
+    { "id": "signal:ship-eta", "name": "Customer ship ETA", "typeId": "ShipEtaSignal", "parentId": null, "initial": { "status": "clear" } },
+    { "id": "ent:example", "name": "Example Manufacturing Co.", "typeId": "Enterprise", "parentId": null },
+    { "id": "site:riverside", "name": "Riverside", "typeId": "Site", "parentId": "ent:example" },
+    { "id": "area:packaging", "name": "Packaging", "typeId": "Area", "parentId": "site:riverside" },
+    { "id": "wc:line2", "name": "Line 2", "typeId": "WorkCenter", "parentId": "area:packaging" },
+    { "id": "eq:line2-filler", "name": "Line 2 filler", "typeId": "Filler", "parentId": "wc:line2",
+      "bindings": {
+        "speed": { "source": "sim", "address": "sine:period=120,amp=40,offset=400", "scanMs": 1000 },
+        "state": { "source": "sim", "address": "step:values=Running|Running|Running|Starved|Idle,period=30", "scanMs": 1000 },
+        "temperature": { "source": "sim", "address": "sine:period=300,amp=3,offset=62", "scanMs": 2000 } } },
+    { "id": "tag:line2-filler-bowl-level", "name": "Filler bowl level", "typeId": "AnalogTag", "parentId": "eq:line2-filler",
+      "bindings": { "value": { "source": "sim", "address": "ramp:min=20,max=80,period=45", "scanMs": 500 } } },
+    { "id": "alarm:line2-filler-high-temp", "name": "Filler high temperature", "typeId": "Alarm", "parentId": "eq:line2-filler",
+      "bindings": { "value": { "source": "sim", "address": "bool:period=37", "scanMs": 1000 } } },
+    { "id": "cam:line2-filler", "name": "Line 2 filler camera", "typeId": "MediaStream", "parentId": "wc:line2",
+      "relationships": { "Monitors": ["eq:line2-filler"] },
+      "stream": { "codec": "H.264", "resolution": "1920x1080", "viewerUrl": "webrtc://media-gateway.example.invalid/line2-filler" },
+      "bindings": {
+        "online": { "source": "sim", "address": "bool:period=3600", "scanMs": 5000 },
+        "fps": { "source": "sim", "address": "random:min=29.5,max=30", "scanMs": 5000 } } },
+    { "id": "decision:line2-speed-trial", "name": "Line 2 speed trial", "typeId": "DecisionRecord", "parentId": "wc:line2" },
+    { "id": "observation:line2-speed-trial:oee", "name": "Speed trial OEE observation", "typeId": "OutcomeObservation", "parentId": "wc:line2",
+      "relationships": { "Observes": ["decision:line2-speed-trial"] } }
+  ],
+  "sources": [ { "id": "sim", "driver": "simulator" } ]
+}

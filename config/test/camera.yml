@@ -1,0 +1,14 @@
+# Plays the part of an IP camera for the gateway test: an RTSP server on :8654
+# that ffmpeg publishes a test pattern into. Not part of the nexus.
+logLevel: error
+api: no
+rtspAddress: 127.0.0.1:8654
+rtpAddress: :18000
+rtcpAddress: :18001
+rtmp: no
+hls: no
+webrtc: no
+srt: no
+playback: no
+paths:
+  cam: {}

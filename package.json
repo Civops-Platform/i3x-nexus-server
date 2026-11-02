@@ -1,0 +1,47 @@
+{
+  "name": "@civops/i3x-nexus-server",
+  "version": "1.0.0",
+  "description": "i3X Nexus Profile server: one CESMII i3X 1.0 endpoint per site for realtime, history, records and media, with governed writes and a redundant pair",
+  "license": "MIT",
+  "author": "CivOps (https://civops.io)",
+  "type": "module",
+  "main": "src/main.ts",
+  "engines": {
+    "node": ">=22"
+  },
+  "keywords": [
+    "i3x",
+    "cesmii",
+    "opc-ua",
+    "mqtt",
+    "sparkplug",
+    "historian",
+    "governance",
+    "redundancy",
+    "smart-manufacturing"
+  ],
+  "scripts": {
+    "start": "tsx src/main.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test tests/*.test.ts",
+    "conformance": "bash scripts/conformance.sh",
+    "test:gateway": "bash scripts/gateway-e2e-docker.sh"
+  },
+  "dependencies": {
+    "mqtt": "^5.16.1",
+    "mssql": "^12.7.13",
+    "mysql2": "^3.24.6",
+    "node-opcua-client": "^2.187.18",
+    "pg": "^8.23.1",
+    "sparkplug-payload": "^1.0.3"
+  },
+  "devDependencies": {
+    "@types/mssql": "^12.3.0",
+    "@types/node": "^26.6.6",
+    "@types/pg": "^8.23.1",
+    "aedes": "^1.2.0",
+    "node-opcua-server": "^2.187.18",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2"
+  }
+}

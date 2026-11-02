@@ -1,0 +1,22 @@
+# MediaMTX for the gateway test (scripts/gateway-e2e-docker.sh). Every request is
+# authorised by the nexus; nothing is anonymous.
+logLevel: warn
+api: yes
+apiAddress: 127.0.0.1:9997
+playback: yes
+playbackAddress: 127.0.0.1:9996
+rtspAddress: 127.0.0.1:8554
+rtmp: no
+hls: no
+srt: no
+webrtcAddress: 127.0.0.1:8889
+authMethod: http
+authHTTPAddress: http://127.0.0.1:8440/v1/x-nexus/gateway/auth
+authHTTPExclude: []
+pathDefaults:
+  recordPath: /recordings/%path/%Y-%m-%d_%H-%M-%S-%f
+  recordFormat: fmp4
+  recordPartDuration: 1s
+  recordSegmentDuration: 3s
+  recordDeleteAfter: 1h
+paths: {}
