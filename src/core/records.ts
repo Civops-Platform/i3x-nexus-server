@@ -67,6 +67,8 @@ export function verifyChain(rows: RecordVersion[]): { line: number; reason: stri
 interface Backend {
   append(draft: (prevHash: string) => RecordVersion, idempotencyKey?: string): Promise<RecordVersion>;
   verify(): Promise<{ line: number; reason: string } | null>;
+  /** Versions in the ledger and the hash of the last one (what an anchor signs). */
+  head(): Promise<{ count: number; head: string }>;
 }
 
 export class RecordStore {
@@ -95,6 +97,7 @@ export class RecordStore {
       verify: async () => (this.file && existsSync(this.file)
         ? verifyChain(readFileSync(this.file, "utf8").split("\n").filter((l) => l.trim()).map((l) => JSON.parse(l)))
         : null),
+      head: async () => ({ count: this.count(), head: this.lastHash }),
     };
   }
 
@@ -169,6 +172,10 @@ export class RecordStore {
         const r = await pool.query(`SELECT * FROM nexus_records ORDER BY seq`);
         return verifyChain(r.rows.map(rowToVersion));
       },
+      head: async () => {
+        const r = await pool.query(`SELECT count(*) AS n, coalesce((array_agg(hash ORDER BY seq DESC))[1], '${GENESIS}') AS head FROM nexus_records`);
+        return { count: Number(r.rows[0].n), head: r.rows[0].head as string };
+      },
     };
     return s;
   }
@@ -209,6 +216,7 @@ export class RecordStore {
   }
 
   verify() { return this.backend.verify(); }
+  head() { return this.backend.head(); }
 }
 
 function rowToVersion(r: Record<string, unknown>): RecordVersion {

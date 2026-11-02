@@ -4,8 +4,19 @@ A server for the **i3X Nexus Profile**: one CESMII i3X 1.0 endpoint per site tha
 values, history, transactional records and media (images, clips, audio, stream descriptors) in one
 address space, with governed writes and priority lanes. The profile is published by LNS Research at
 [github.com/LNS-Research/i3x-nexus-profile](https://github.com/LNS-Research/i3x-nexus-profile); this
-repository is CivOps' implementation of it, at profile Level 4 (governed setpoint writes), and runs as a
-redundant pair over a redundant database.
+repository is CivOps' implementation of it. It runs as a redundant pair over a redundant database, and
+goes one level past the profile: Level 5, the **i3X Nexus Agent Extension**
+([`docs/i3X-Nexus-Agent-Extension.pdf`](docs/i3X-Nexus-Agent-Extension.pdf)), from CivOps and built on the
+LNS Research profile. It covers what a site needs once it runs many AI agents:
+
+- every agent works under a **grant** from a named person: one task, the areas of the plant it covers, what it
+  may do there, a request budget and an end time, and the ledger records the person behind every agent request;
+- one **freeze** stops all agent writes on the site while people carry on, plus suspend, revoke and a
+  **registry** of every agent's grants, outcomes and refusals;
+- an **MCP server** at `/mcp`, so any MCP-speaking agent can use the plant through the same governed paths;
+- **signed approvals**, bound to the exact version of the request the approver read;
+- **ledger anchoring**: the ledger head is signed and exported, so a database administrator cannot rewrite
+  history without it showing.
 
 ![i3X Nexus server](catalog/hero-1600x900.png)
 
@@ -19,6 +30,7 @@ redundant pair over a redundant database.
 | Setpoint writes (W2), against a real OPC UA server | 10,000 fuzzed values: none outside the envelope accepted; ack-without-apply compensated; device refusal rejected; stale rejected; held while degraded, applied after | `tests/setpoint.test.ts` |
 | Sign-in | JWTs (RS256/PS256/ES256) via JWKS; 10 forgeries and mismatches refused; key rotation; mTLS with a site CA, forged-CA certificate refused | `tests/auth.test.ts` |
 | Conformance over HTTPS (trusted CA, no --insecure) | Full 1.0 Compliance, 54 passed, 0 failed, **0 warnings** | `docs/conformance/https-run.json` |
+| Agent extension (Level 5) | Grants, areas, budgets, sponsor attribution, sponsor cannot approve, freeze with held requests, suspend, revoke, registry, MCP tools, signed approvals, anchors catching a rewritten ledger; also through the standby of a pair. CESMII suite with Level 5 on (grants required, signed approvals, anchoring): Full 1.0 Compliance in 3 consecutive runs, 53 passed, 0 failed | `tests/agents.test.ts`, `docs/conformance/level5-run-{1,2,3}.json` |
 | Database failover (Patroni pair with an etcd witness, primary killed outright) | Writes through the server resume in 20 s in each direction; the old primary rejoins as synchronous standby by itself; ledger chain intact, no idempotency key applied twice | `scripts/verify-ledger.ts` |
 
 One advisory warning remains in every plain-HTTP conformance run: CORE-05, plain HTTP on localhost.
@@ -64,6 +76,17 @@ scripts/gateway-e2e-docker.sh                             # media gateway test: 
 npx tsx scripts/failover-drill.ts 20 10000                # 20 governor kills under write load, then ledger reconciliation
 ```
 
+Agent extension (Level 5):
+
+```bash
+NEXUS_AGENTS_REQUIRE_GRANT=1      # agents act only under a grant (PUT /x-nexus/agents/grants)
+NEXUS_SIGNED_APPROVALS=1          # approvers sign: npx tsx scripts/sign-approval.ts key.pem "<string from GET /x-nexus/requests/{id}>"
+NEXUS_ANCHOR_KEY=anchor.pem NEXUS_ANCHOR_FILE=/other/storage/anchors.jsonl   # and/or NEXUS_ANCHOR_URL
+npx tsx scripts/verify-anchors.ts data/records.jsonl /other/storage/anchors.jsonl anchor.pub.pem
+```
+
+An MCP client points at `https://<nexus>/v1/mcp` with the agent's grant token as its bearer token.
+
 The suite is not on npm. Clone `github.com/cesmii/i3X` at `1.0` and point `I3X_SUITE` at `conformance-tests/`.
 
 `config/example-site.json` is a synthetic site (Example Manufacturing Co.). Real site configs and
@@ -76,11 +99,12 @@ src/i3x/wire.ts      i3X 1.0 envelopes, projection, bulk reads, history, subscri
 src/i3x/fabric.ts    the site model + cache + records + media as one address space
 src/i3x/writes.ts    the W0 write path and the media intake
 src/i3x/stream.ts    SSE on a long-lived process: P0 at once, P1 conflated on a tick
-src/core/            cache, history, records ledger, media store, auth, priority lanes
+src/core/            cache, history, records ledger and its anchoring, media store, auth, priority lanes
 src/drivers/         simulator, OPC UA, MQTT, Sparkplug B
 src/cluster/         shared schema, governor lease, shared subscriptions
 src/mirror/          enterprise tier: mount a site nexus over i3X
 src/governance/      authority limits, the W1 governor, system-of-record adapters, projection
+src/agents/          agent grants, registry, freeze (control.ts) and the MCP server (mcp.ts)
 src/history/         historian federation (Ignition SQL on Postgres, MySQL, SQL Server)
 src/media/           media gateway (MediaMTX)
 src/nexus.ts         wiring and the HTTP transport

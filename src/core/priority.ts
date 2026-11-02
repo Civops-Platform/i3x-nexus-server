@@ -91,6 +91,8 @@ export class Lanes {
  */
 export function classify(method: string, path: string, elementClasses: PriorityClass[]): PriorityClass {
   if (path === "/info") return "P0";
+  // Stopping agents must never queue behind the load they are causing.
+  if (path === "/x-nexus/agents/freeze") return "P0";
   if (path.startsWith("/x-nexus/media/")) return "P3";
   if (path === "/objects/history" && method === "POST") return "P3";
   if (method === "PUT") return elementClasses.length && elementClasses.every((c) => c === "P0") ? "P0" : "P2";

@@ -21,6 +21,10 @@ export interface Principal {
   owns: string[];
   /** Roles this principal holds for approvals (W1/W2). Agents hold none that approve. */
   roles?: string[];
+  /** Ed25519 public key (PEM) this person signs approvals with (Agent extension, NXA-6). */
+  approvalKey?: string;
+  /** Set when an agent authenticated with a grant token (Agent extension, NXA-1). */
+  grant?: import("../agents/control").GrantContext;
 }
 
 /**
@@ -51,6 +55,8 @@ export class Authenticator {
   private bySub = new Map<string, Principal>();
   private byCert = new Map<string, Principal>();
   private byId = new Map<string, Principal>();
+  /** Grant tokens resolve through the agent registry (set by the nexus). */
+  grants: ((token: string) => Principal | null) | null = null;
 
   constructor(defs: PrincipalDef[], private jwt: JwtVerifier | null = null, private clusterSecret: string | null = null) {
     const strip = ({ tokenSha256: _t, oauthSubject: _o, certSubject: _c, ...p }: PrincipalDef): Principal => p;
@@ -74,6 +80,9 @@ export class Authenticator {
   /** mTLS first, then a forwarded-write assertion, then a JWT, then an opaque token. */
   async fromRequest(r: AuthRequest): Promise<Principal | null> {
     if (r.certSubject) { const p = this.byCert.get(r.certSubject); if (p) return p; }
+    // A grant token travels on a forwarded write and carries more than the id alone.
+    const gt = /^Bearer\s+(nxg_\S+)$/i.exec(r.authorization ?? "");
+    if (gt && this.grants) return this.grants(gt[1]);
     if (r.forwardedPrincipal && this.clusterSecret) {
       const p = this.verifyForwarded(r.forwardedPrincipal);
       if (p) return p;

@@ -13,6 +13,12 @@
 //   NEXUS_LEASE_TTL_MS  governor lease TTL (default 10000)
 //   NEXUS_TLS_CERT/KEY  PEM files: serve HTTPS. NEXUS_TLS_CA: accept client certificates it issued (mTLS)
 //   NEXUS_OAUTH_ISSUER / NEXUS_OAUTH_JWKS / NEXUS_OAUTH_AUDIENCE  accept OAuth 2 access tokens (JWT)
+//   Agent extension (Level 5, see docs/i3X-Nexus-Agent-Extension.html):
+//   NEXUS_AGENTS_REQUIRE_GRANT=1  an agent acts only under a grant from a named person
+//   NEXUS_SIGNED_APPROVALS=1      every approval is signed with the approver's registered key
+//   NEXUS_ANCHOR_KEY    Ed25519 private key (PEM file) that signs the ledger head
+//   NEXUS_ANCHOR_FILE / NEXUS_ANCHOR_URL  where anchors go (append-only file, HTTP endpoint)
+//   NEXUS_ANCHOR_EVERY_MS  how often the head is anchored when it moved (default 300000)
 
 import { readFileSync } from "node:fs";
 import { loadConfig } from "./model/config";
@@ -44,6 +50,13 @@ const nexus = new Nexus({
     nodeId: env.NEXUS_NODE_ID,
     secret: env.NEXUS_CLUSTER_SECRET ?? (() => { throw new Error("NEXUS_CLUSTER_SECRET is required in cluster mode"); })(),
     lease: env.NEXUS_LEASE_TTL_MS ? { ttlMs: Number(env.NEXUS_LEASE_TTL_MS), renewMs: Math.max(200, Number(env.NEXUS_LEASE_TTL_MS) / 5), marginMs: Number(env.NEXUS_LEASE_TTL_MS) / 5 } : undefined,
+  } : undefined,
+  agents: { requireGrant: env.NEXUS_AGENTS_REQUIRE_GRANT === "1" },
+  requireSignedApprovals: env.NEXUS_SIGNED_APPROVALS === "1",
+  anchor: env.NEXUS_ANCHOR_KEY ? {
+    keyPem: readFileSync(env.NEXUS_ANCHOR_KEY, "utf8"),
+    file: env.NEXUS_ANCHOR_FILE, url: env.NEXUS_ANCHOR_URL,
+    everyMs: env.NEXUS_ANCHOR_EVERY_MS ? Number(env.NEXUS_ANCHOR_EVERY_MS) : undefined,
   } : undefined,
 });
 

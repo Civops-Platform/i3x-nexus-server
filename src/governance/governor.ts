@@ -17,7 +17,7 @@
 // dies is picked up by the next one: `resume()` re-reads the system of record and
 // either records the apply that already happened or makes it, never both.
 
-import { createHash } from "node:crypto";
+import { createHash, createPublicKey, verify as cryptoVerify } from "node:crypto";
 import type { Principal } from "../core/auth";
 import type { RecordStore, RecordVersion } from "../core/records";
 import { approverRolesFor, escalationOf, parseLimit, type AuthorityLimit, type Escalation } from "./authority";
@@ -26,6 +26,8 @@ import type { ExternalRecord, SystemAdapter } from "./adapters";
 export const W1_INTAKE = "nexus:intake:W1";
 export const W2_INTAKE = "nexus:intake:W2";
 export const WR_PREFIX = "nexus:wr:";
+/** What an approver signs (NXA-6): the request, the decision, and the version they read. */
+export const approvalSigningString = (id: string, decision: "approve" | "reject", versionHash: string) => `nexus-approval:v1|${id}|${decision}|${versionHash}`;
 export const wrIdFor = (principal: string, key: string) => WR_PREFIX + createHash("sha256").update(`${principal}\n${key}`).digest("hex").slice(0, 24);
 
 export type WrStatus = "requested" | "approved" | "applied" | "verified" | "rejected" | "expired" | "rolled_back";
@@ -35,7 +37,8 @@ export interface WriteRequestValue {
   tier: "W1" | "W2";
   proposed: Record<string, unknown>;
   prior: { value: Record<string, unknown> | null; version: string | null; timestamp: string };
-  actor: { principal: string; kind: Principal["kind"]; onBehalfOf: string | null };
+  /** For an agent on a grant, onBehalfOf is the grant's sponsor, never what the agent claims (NXA-2). */
+  actor: { principal: string; kind: Principal["kind"]; onBehalfOf: string | null; grant?: { id: string; task: string } | null };
   justification: { decisionRef: string | null; falsification: unknown };
   matter: { site: string; exceptionType: string; exposureUsd: number | null; boundaryTriggers: string[] };
   authority: { limitRef: string | null; escalation: Escalation; approverRoles: string[] | null };
@@ -45,7 +48,7 @@ export interface WriteRequestValue {
   idempotencyKey: string;
   status: WrStatus;
   statusDetail: string | null;
-  approvals: Array<{ principal: string; role: string; decision: "approve" | "reject"; comment: string | null; at: string }>;
+  approvals: Array<{ principal: string; role: string; decision: "approve" | "reject"; comment: string | null; at: string; signature?: { signedHash: string; sig: string } | null }>;
   applied: { at: string; ack: string } | null;
   verification: { readBack: Record<string, unknown> | null; match: boolean; at: string } | null;
   expiresAt: string;
@@ -72,6 +75,12 @@ export interface GovernorDeps {
   /** Requests expire unapproved after this (NX profile §12: W1 4 h). */
   expiryMs?: number;
   verifyWindowMs?: number;
+  /** Agent extension: an agent's request inside its grant? Null = yes; `used` = requests already raised on the grant. */
+  agentCheck?: (p: Principal, tier: "W1" | "W2", targetId: string, used: number) => string | null;
+  /** Agent extension: non-null while agent writes are frozen; approved agent requests are held, not applied. */
+  agentWritesFrozen?: () => string | null;
+  /** Agent extension: every approval is signed with the approver's registered key (NXA-6). */
+  requireSignedApprovals?: boolean;
   now?: () => number;
   onChange?: () => void;
 }
@@ -130,6 +139,11 @@ export class Governor {
     }
     const targetId = compensates ? compensates.target.elementId : i.target?.elementId;
     if (typeof targetId !== "string") return { ok: false, status: 400, detail: "target.elementId is required" };
+    if (p.kind === "agent" && this.d.agentCheck) {
+      const used = p.grant ? this.ids().filter((x) => this.current(x)?.actor.grant?.id === p.grant!.id).length : 0;
+      const why = this.d.agentCheck(p, tier, targetId, used);
+      if (why) return { ok: false, status: this.d.agentWritesFrozen?.() ? 423 : 403, detail: why };
+    }
     const field = compensates ? (compensates.target as { field?: string }).field ?? "value" : (typeof i.target?.field === "string" ? i.target.field : "value");
     const t = tier === "W2" ? this.d.resolveSetpoint?.(targetId, field) ?? null : this.d.resolveTarget(targetId);
     if (!t) {
@@ -183,7 +197,9 @@ export class Governor {
       tier,
       proposed,
       prior: { value: prior ? pick(prior.fields, keys) : null, version: prior?.version ?? null, timestamp: at },
-      actor: { principal: p.id, kind: p.kind, onBehalfOf: typeof i.onBehalfOf === "string" ? i.onBehalfOf : null },
+      actor: p.grant
+        ? { principal: p.id, kind: p.kind, onBehalfOf: p.grant.sponsor, grant: { id: p.grant.id, task: p.grant.task } }
+        : { principal: p.id, kind: p.kind, onBehalfOf: typeof i.onBehalfOf === "string" ? i.onBehalfOf : null, grant: null },
       justification: { decisionRef: typeof i.justification?.decisionRef === "string" ? i.justification.decisionRef : (compensates?.justification.decisionRef ?? null), falsification: i.justification?.falsification ?? null },
       matter,
       authority: { limitRef: found?.elementId ?? null, escalation, approverRoles },
@@ -211,12 +227,26 @@ export class Governor {
     if (p.kind === "agent") return { ok: false, status: 403, detail: "an agent may request but never approve a write (NX-21)" };
     if (cur.tier === "W2" && p.kind !== "person") return { ok: false, status: 403, detail: "a setpoint change is approved by a named person, every time" };
     if (p.id === cur.actor.principal) return { ok: false, status: 403, detail: "the requester cannot approve their own request" };
+    // NXA-5: an agent's sponsor asked for this through the agent; approving it would be self-approval.
+    if (cur.actor.grant && p.id === cur.actor.onBehalfOf) return { ok: false, status: 403, detail: `${p.id} sponsored the grant this request was raised under, so cannot approve it` };
     const role = (p.roles ?? []).find((r) => cur.authority.approverRoles?.includes(r));
     if (!role) return { ok: false, status: 403, detail: `approving ${id} needs one of: ${(cur.authority.approverRoles ?? []).join(", ") || "(nobody: no decision right)"}` };
+    let signature: { signedHash: string; sig: string } | null = null;
+    if (this.d.requireSignedApprovals || p.approvalKey) {
+      // NXA-6: the approver signs the exact version they read, so a decision cannot be
+      // replayed onto a request that changed after they looked at it.
+      if (!p.approvalKey) return { ok: false, status: 403, detail: `${p.id} has no approval key registered; approvals on this nexus are signed` };
+      const signedHash = this.d.records().current(id)!.hash;
+      const sig = typeof i.signature === "string" ? i.signature : "";
+      let good = false;
+      try { good = !!sig && cryptoVerify(null, Buffer.from(approvalSigningString(id, decision, signedHash)), createPublicKey(p.approvalKey), Buffer.from(sig, "base64url")); } catch { good = false; }
+      if (!good) return { ok: false, status: 403, detail: `signature missing or invalid; sign "${approvalSigningString(id, decision, signedHash)}" with your approval key (Ed25519, base64url)` };
+      signature = { signedHash, sig };
+    }
 
     const next: WriteRequestValue = {
       ...cur,
-      approvals: [...cur.approvals, { principal: p.id, role, decision, comment: typeof i.comment === "string" ? i.comment : null, at: this.iso() }],
+      approvals: [...cur.approvals, { principal: p.id, role, decision, comment: typeof i.comment === "string" ? i.comment : null, at: this.iso(), signature }],
       status: decision === "approve" ? "approved" : "rejected",
       statusDetail: decision === "approve" ? null : `rejected by ${p.id}`,
     };
@@ -243,6 +273,11 @@ export class Governor {
         // Held, not failed: it is applied when redundancy is back (resume), or expires.
         const why = this.d.w2Suspended?.();
         if (why) throw new Error(`setpoint writes are suspended: ${why}`);
+      }
+      if (cur.actor.kind === "agent") {
+        // Held, like a suspended setpoint: applied when the freeze is released, or never.
+        const fz = this.d.agentWritesFrozen?.();
+        if (fz) throw new Error(fz);
       }
       const adapter = this.d.adapters.get(cur.target.system)!;
       // Freshness (§7.4 step 5): the record must still be what the request was raised against.

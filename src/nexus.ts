@@ -37,7 +37,7 @@ import { MediaStore } from "./core/media";
 import { Authenticator, RateLimiter, can, type Principal, type PrincipalDef } from "./core/auth";
 import { Lanes, classify, type LaneConfig } from "./core/priority";
 import { NexusFabric, shaOfMediaId } from "./i3x/fabric";
-import { createSubscriptionStore, handleI3xRequest, handleWrites, problem, type I3xResponse, type VQT } from "./i3x/wire";
+import { createSubscriptionStore, handleI3xRequest, handleWrites, ok, problem, type I3xResponse, type VQT } from "./i3x/wire";
 import { writeOne } from "./i3x/writes";
 import { openStream } from "./i3x/stream";
 import type { Driver } from "./drivers/driver";
@@ -46,7 +46,10 @@ import { MqttDriver } from "./drivers/mqtt";
 import { OpcUaDriver } from "./drivers/opcua";
 import { SparkplugDriver } from "./drivers/sparkplug";
 import { UpstreamMirror } from "./mirror/upstream";
-import { Governor } from "./governance/governor";
+import { Governor, WR_PREFIX, approvalSigningString } from "./governance/governor";
+import { AgentControl } from "./agents/control";
+import { handleMcp, type Dispatched } from "./agents/mcp";
+import { Anchorer, type AnchorOptions } from "./core/anchor";
 import { CmmsRestAdapter, type SystemAdapter } from "./governance/adapters";
 import { SystemProjection } from "./governance/projection";
 import { SetpointAdapter, envelopeViolation, SETPOINT_SYSTEM, type Envelope } from "./governance/setpoint";
@@ -80,7 +83,15 @@ export interface NexusOptions {
   oauth?: OAuthConfig;
   /** Level 2: run as one node of a redundant pair. Requires pgUrl. */
   cluster?: { nodeId: string; secret: string; lease?: LeaseOptions; heartbeatMs?: number };
+  /** Agent extension: agents act only under a grant from a named person (NXA-1). */
+  agents?: { requireGrant?: boolean };
+  /** Agent extension: every approval is signed with the approver's registered key (NXA-6). */
+  requireSignedApprovals?: boolean;
+  /** Agent extension: sign and export the ledger head (NXA-7). */
+  anchor?: AnchorOptions;
 }
+
+const VERSION = "1.1.0";
 
 /** A peer counts as alive while its heartbeat is younger than this. */
 const PEER_TIMEOUT_MS = 6_000;
@@ -96,6 +107,8 @@ export class Nexus {
   private clusterTimers: NodeJS.Timeout[] = [];
   readonly mirrors = new Map<string, UpstreamMirror>();
   readonly governor: Governor | null = null;
+  readonly agents: AgentControl;
+  anchorer: Anchorer | null = null;
   readonly projection: SystemProjection | null = null;
   private governorTimer: NodeJS.Timeout | null = null;
   readonly setpoints: SetpointAdapter | null = null;
@@ -126,6 +139,13 @@ export class Nexus {
     this.lanes = new Lanes(o.lanes, o.lagOverride);
     this.auth = new Authenticator(o.principals, o.oauth ? new JwtVerifier(o.oauth) : null, o.cluster?.secret ?? null);
     this.limiter = new RateLimiter(o.rate?.perSecond ?? 25, o.rate?.burst ?? 120);
+    this.agents = new AgentControl({
+      records: () => this.records,
+      principals: o.principals,
+      parentOf: (id) => { const d = this.fabric.objectDef(id); return d ? (d.parentId ?? null) : undefined; },
+      requireGrant: o.agents?.requireGrant ?? false,
+    });
+    this.auth.grants = (t) => this.agents.resolve(t);
     this.fabric = new NexusFabric({
       config: o.config, cache: this.cache, records: this.records, media: this.media, lanes: this.lanes,
       publicBase: () => this.base,
@@ -193,6 +213,9 @@ export class Nexus {
         adapters: new Map<string, import("./governance/adapters").SystemAdapter>([...systems.map((s) => [s.id, s.adapter] as const), ...(sp ? [[SETPOINT_SYSTEM, sp] as const] : [])]),
         limits: () => o.config.objects.filter((x) => x.typeId === "AuthorityLimit").map((x) => ({ elementId: x.id, value: this.records.current(x.id)?.value })),
         onChange: () => this.fabric.rebuild(),
+        agentCheck: (p, tier, target, used) => this.agents.checkRequest(p, tier, target, used),
+        agentWritesFrozen: () => this.agents.frozen(),
+        requireSignedApprovals: o.requireSignedApprovals ?? false,
       });
     }
     this.cache.on("change", (c: CacheChange) => this.onChange(c));
@@ -264,6 +287,11 @@ export class Nexus {
       this.mirrors.set(u.id, m);
       await m.start();
     }
+    if (this.o.anchor) {
+      this.anchorer = new Anchorer(this.o.anchor, this.o.config.site.id, this.o.cluster?.nodeId ?? "single",
+        () => this.records.head(), () => !this.lease || this.lease.isLeader());
+      this.anchorer.start();
+    }
     this.sweeper = setInterval(() => this.cache.sweep(), 1000);
     return a.port;
   }
@@ -334,6 +362,7 @@ export class Nexus {
 
   async stop(opts: { graceful?: boolean } = { graceful: true }) {
     if (this.sweeper) clearInterval(this.sweeper);
+    this.anchorer?.stop();
     for (const t of this.clusterTimers) clearInterval(t);
     for (const m of this.mirrors.values()) m.stop();
     this.projection?.stop();
@@ -399,6 +428,9 @@ export class Nexus {
 
       const p = await this.authenticate(req);
       if (!p || !can(p, "read")) return this.send(req, res, problem(401, "Unauthorized", "i3X requires a bearer token with the read scope for every endpoint except GET /info."));
+      const gate = this.agents.admit(p);
+      if (gate) return this.send(req, res, problem(gate.status, "Forbidden", gate.detail));
+      (req as Scoped).nexusPrincipal = p;
       const rl = this.limiter.take(p.id);
       if (!rl.ok) return this.send(req, res, problem(429, "Too Many Requests", `rate limit for ${p.id}; retry in ${rl.retryAfterS} s`), { "Retry-After": String(rl.retryAfterS) });
 
@@ -409,25 +441,106 @@ export class Nexus {
         try { body = raw.length ? JSON.parse(raw.toString("utf8")) : undefined; } catch { return this.send(req, res, problem(400, "Bad Request", "body is not valid JSON")); }
       }
 
-      const named = namedElements(body);
-      const cls = classify(method, path, named.map((id) => this.fabric.priorityOf(id)));
-      const admit = await this.lanes.admit(cls);
-      if (!admit.ok) {
-        return this.send(req, res, problem(cls === "P3" ? 503 : 429, "Busy", admit.reason), { "Retry-After": String(admit.retryAfterS) });
-      }
-      try {
-        await this.route(req, res, method as "GET" | "POST" | "PUT", path, query, body, p);
-      } finally {
-        admit.release();
-      }
+      if (path === "/mcp") return await this.mcpRoute(req, res, method, body, p);
+      await this.serve(req, res, method as "GET" | "POST" | "PUT", path, query, body, p);
     } catch (e) {
       if (!res.headersSent) this.send(req, res, problem(500, "Internal Error", (e as Error).message));
       else res.end();
     }
   }
 
+  /** Everything after authentication: an agent's areas, the priority lanes, then the route. */
+  private async serve(req: IncomingMessage, res: ServerResponse, method: "GET" | "POST" | "PUT", path: string,
+    query: Record<string, string>, body: Record<string, unknown> | undefined, p: Principal): Promise<void> {
+    if (p.grant) {
+      const named = [...namedElements(body), ...[query.elementId, query.parentId].filter((x): x is string => !!x)];
+      const outside = named.filter((id) => !this.agentSees(p, id));
+      if (outside.length) {
+        this.agents.flag(p.id, p.grant.id, `asked for elements outside its grant: ${outside.slice(0, 5).join(", ")}`);
+        return this.send(req, res, problem(403, "Outside grant", `outside grant ${p.grant.id}'s areas (${p.grant.areas.join(", ")}): ${outside.join(", ")}`));
+      }
+    }
+    const cls = classify(method, path, namedElements(body).map((id) => this.fabric.priorityOf(id)));
+    const admit = await this.lanes.admit(cls);
+    if (!admit.ok) {
+      return this.send(req, res, problem(cls === "P3" ? 503 : 429, "Busy", admit.reason), { "Retry-After": String(admit.retryAfterS) });
+    }
+    try {
+      await this.route(req, res, method, path, query, body, p);
+    } finally {
+      admit.release();
+    }
+  }
+
+  /** An agent on a grant sees its areas, the intakes, and its own write requests. */
+  private agentSees(p: Principal, id: string) {
+    if (id.startsWith(WR_PREFIX)) return this.governor?.current(id)?.actor.principal === p.id;
+    return this.agents.inArea(p, id);
+  }
+
+  /** NXA-4: MCP over HTTP. Each tool call runs through serve() as the caller. */
+  private async mcpRoute(req: IncomingMessage, res: ServerResponse, method: string, body: unknown, p: Principal) {
+    if (method !== "POST") { res.writeHead(405, { Allow: "POST" }); res.end(); return; }
+    const dispatch = async (m: "GET" | "POST" | "PUT", path: string, query: Record<string, string>, b: unknown, headers: Record<string, string> = {}): Promise<Dispatched> => {
+      const inner = Object.assign(Object.create(req), {
+        headers: { ...(req.headers.authorization ? { authorization: req.headers.authorization } : {}), ...headers },
+        nexusPrincipal: p,
+      }) as IncomingMessage;
+      const cap = { status: 0, headers: {} as Record<string, string>, chunks: [] as Buffer[], headersSent: false };
+      const fake = {
+        get headersSent() { return cap.headersSent; },
+        writeHead(status: number, h: Record<string, string> = {}) { cap.status = status; cap.headersSent = true; for (const [k, v] of Object.entries(h)) cap.headers[k.toLowerCase()] = String(v); return fake; },
+        write(c: Buffer | string) { cap.chunks.push(Buffer.from(c)); return true; },
+        end(c?: Buffer | string) { if (c) cap.chunks.push(Buffer.from(c)); },
+        on() { return fake; }, once() { return fake; },
+      } as unknown as ServerResponse;
+      await this.serve(inner, fake, m, path, query, b as Record<string, unknown> | undefined, p);
+      const text = Buffer.concat(cap.chunks).toString("utf8");
+      let parsed: unknown = text;
+      try { parsed = text ? JSON.parse(text) : null; } catch { /* keep text */ }
+      return { status: cap.status, headers: cap.headers, body: parsed };
+    };
+    const out = await handleMcp(body, dispatch, VERSION);
+    if (out === null) { res.writeHead(202); res.end(); return; }
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify(out));
+  }
+
+  /** Agent extension administration (§3) and approval signing info (§5). */
+  private async agentsRoute(req: IncomingMessage, res: ServerResponse, method: string, path: string, body: Record<string, unknown> | undefined, p: Principal): Promise<void> {
+    const send = (r: { ok: true; value: unknown } | { ok: false; status: number; detail: string }) =>
+      this.send(req, res, r.ok ? ok(r.value) : problem(r.status, r.status === 404 ? "Not Found" : r.status === 400 ? "Bad Request" : r.status === 409 ? "Conflict" : "Forbidden", r.detail));
+    const wrs = () => (this.governor?.ids() ?? []).map((i) => this.governor!.current(i)!).filter(Boolean);
+    if (method === "GET" && path === "/x-nexus/agents") {
+      const reg = this.agents.registry(p, wrs());
+      return send(reg ? { ok: true, value: reg } : { ok: false, status: 403, detail: "the registry needs agents:admin, or agents:grant for the grants you sponsor" });
+    }
+    if (method === "GET" && path === "/x-nexus/agents/me") {
+      if (p.kind !== "agent") return send({ ok: false, status: 403, detail: "only an agent has a grant" });
+      const g = p.grant;
+      const used = g ? wrs().filter((r) => r.actor.grant?.id === g.id).length : null;
+      return send({ ok: true, value: { agent: p.id, grant: g ? { ...g, requestsUsed: used, requestsLeft: Math.max(0, g.maxRequests - (used ?? 0)) } : null, writesFrozen: this.agents.frozen() } });
+    }
+    if (method === "GET" && path.startsWith("/x-nexus/requests/")) {
+      const id = decodeURIComponent(path.slice("/x-nexus/requests/".length));
+      const v = this.records.current(id);
+      if (!v || !id.startsWith(WR_PREFIX)) return send({ ok: false, status: 404, detail: `no WriteRequest ${id}` });
+      return send({ ok: true, value: { id, versionHash: v.hash, sign: { approve: approvalSigningString(id, "approve", v.hash), reject: approvalSigningString(id, "reject", v.hash) } } });
+    }
+    if (method !== "PUT") return send({ ok: false, status: 404, detail: `${method} ${path} is not a nexus agent endpoint` });
+    if (this.lease && !this.lease.isLeader()) return this.forwardWrite(req, res, path, body);
+    const seg = path.slice("/x-nexus/agents/".length).split("/").map(decodeURIComponent);
+    if (seg[0] === "grants" && seg.length === 1) return send(await this.agents.issue(p, body));
+    if (seg[0] === "grants" && seg[2] === "revoke") return send(await this.agents.revoke(p, seg[1], body));
+    if (seg[0] === "freeze" && seg.length === 1) return send(await this.agents.setFrozen(p, true, body));
+    if (seg[0] === "release" && seg.length === 1) return send(await this.agents.setFrozen(p, false, body));
+    if (seg.length === 2 && (seg[1] === "suspend" || seg[1] === "resume")) return send(await this.agents.setSuspended(p, seg[0], seg[1] === "suspend"));
+    return send({ ok: false, status: 404, detail: `PUT ${path} is not a nexus agent endpoint` });
+  }
+
   private async route(req: IncomingMessage, res: ServerResponse, method: "GET" | "POST" | "PUT", path: string,
     query: Record<string, string>, body: Record<string, unknown> | undefined, p: Principal): Promise<void> {
+    if (path.startsWith("/x-nexus/agents") || path.startsWith("/x-nexus/requests/")) return this.agentsRoute(req, res, method, path, body, p);
     if (method === "PUT" && (path === "/objects/value" || path === "/objects/history")) {
       // A batch for a mounted site goes to that site whole (NX-48); the site decides it.
       const ups = new Set(namedElements(body).map((id) => this.fabric.mountOf(id)));
@@ -725,7 +838,24 @@ export class Nexus {
     }
   }
 
+  /** A listing never shows an agent on a grant what lies outside its areas (NXA-3). */
+  private filterForGrant(p: Principal, out: I3xResponse): I3xResponse {
+    const b = out.body as { result?: unknown; results?: unknown };
+    const sees = (x: unknown) => {
+      const id = (x as { elementId?: unknown })?.elementId;
+      return typeof id !== "string" || this.agentSees(p, id);
+    };
+    if (Array.isArray(b?.result)) return { ...out, body: { ...b, result: b.result.filter(sees) } };
+    if (Array.isArray(b?.results)) {
+      return { ...out, body: { ...b, results: b.results.map((x) => sees(x) ? x
+        : { success: false, elementId: (x as { elementId: string }).elementId, responseDetail: { title: "Outside grant", status: 403, detail: `outside grant ${p.grant!.id}'s areas` } }) } };
+    }
+    return out;
+  }
+
   private send(req: IncomingMessage, res: ServerResponse, out: I3xResponse, headers: Record<string, string> = {}) {
+    const p = (req as Scoped).nexusPrincipal;
+    if (p?.grant) out = this.filterForGrant(p, out);
     const json = Buffer.from(JSON.stringify(out.body));
     const gz = String(req.headers["accept-encoding"] ?? "").includes("gzip");
     res.writeHead(out.status, { "Content-Type": "application/json", ...(gz ? { "Content-Encoding": "gzip" } : {}), ...headers });
@@ -745,6 +875,8 @@ function makeDriver(s: SourceDef): Driver {
 
 /** The driver factory is module-level; the gateway it polls is the running nexus's. */
 let gatewayRef: MediaMtxGateway | null = null;
+
+type Scoped = IncomingMessage & { nexusPrincipal?: Principal };
 
 function namedElements(body: Record<string, unknown> | undefined): string[] {
   if (!body) return [];

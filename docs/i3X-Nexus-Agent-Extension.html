@@ -1,0 +1,235 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>i3X Nexus Agent Extension</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Mono:wght@400;500&family=Newsreader:opsz,wght@6..72,500;6..72,600&display=swap">
+<style>
+/* Layout: one reading column with a sticky contents rail on wide screens; tables and diagrams scroll inside their own boxes. */
+:root {
+  --bg: #f6f7f8; --surface: #ffffff; --fg: #1b2228; --muted: #5a6670; --rule: #d7dde2;
+  --accent: #1f6f78; --accent-soft: #e2f0f1; --ok: #2e7d4f; --warn: #9a6400; --stop: #a63a2b; --code-bg: #eef1f3;
+  --f-display: "Newsreader", Georgia, "Times New Roman", serif;
+  --f-body: "IBM Plex Sans", -apple-system, "Segoe UI", Roboto, sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #12171b; --surface: #1a2126; --fg: #e3e8ec; --muted: #9aa7b1; --rule: #2e3940;
+  --accent: #5fb7bf; --accent-soft: #1d3336; --ok: #6cc290; --warn: #e0a84a; --stop: #e48071; --code-bg: #222b31;
+  color-scheme: dark; } }
+:root[data-theme="dark"] {
+  --bg: #12171b; --surface: #1a2126; --fg: #e3e8ec; --muted: #9aa7b1; --rule: #2e3940;
+  --accent: #5fb7bf; --accent-soft: #1d3336; --ok: #6cc290; --warn: #e0a84a; --stop: #e48071; --code-bg: #222b31;
+  color-scheme: dark; }
+body { background: var(--bg); color: var(--fg); font-family: var(--f-body); font-size: 16px; line-height: 1.6; }
+.wrap { max-width: 1120px; margin: 0 auto; padding-block: 40px 96px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 48px; }
+@media (max-width: 860px) { .wrap { grid-template-columns: minmax(0, 1fr); gap: 24px; } nav.toc { position: static !important; } }
+nav.toc { position: sticky; top: calc(env(safe-area-inset-top, 0px) + 24px); align-self: start; font-size: 13.5px; }
+nav.toc .lbl { text-transform: uppercase; letter-spacing: .08em; font-size: 11px; color: var(--muted); margin-bottom: 8px; }
+nav.toc ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+nav.toc a { color: var(--muted); text-decoration: none; }
+nav.toc a:hover, nav.toc a:focus-visible { color: var(--accent); }
+main { min-width: 0; max-width: 760px; }
+header.doc { border-bottom: 1px solid var(--rule); padding-bottom: 24px; margin-bottom: 8px; }
+.eyebrow { font-family: var(--f-mono); font-size: 12px; letter-spacing: .06em; color: var(--accent); text-transform: uppercase; }
+h1 { font-family: var(--f-display); font-weight: 600; font-size: clamp(32px, 5vw, 44px); line-height: 1.12; margin: 8px 0 12px; text-wrap: balance; }
+h2 { font-family: var(--f-display); font-weight: 600; font-size: 27px; line-height: 1.2; margin: 56px 0 12px; text-wrap: balance; scroll-margin-top: 24px; }
+h2 .n { font-family: var(--f-mono); font-size: 15px; color: var(--accent); font-weight: 500; margin-right: 10px; vertical-align: 3px; }
+h3 { font-size: 17px; font-weight: 600; margin: 32px 0 6px; }
+p, li { max-width: 68ch; }
+.lede { font-size: 18px; }
+.meta { font-size: 13.5px; color: var(--muted); display: flex; flex-wrap: wrap; gap: 6px 18px; }
+code, .mono { font-family: var(--f-mono); font-size: .88em; background: var(--code-bg); padding: 1px 5px; border-radius: 3px; }
+a { color: var(--accent); }
+.box { overflow-x: auto; margin: 16px 0; border: 1px solid var(--rule); border-radius: 6px; background: var(--surface); }
+table { border-collapse: collapse; width: 100%; font-size: 14px; }
+th, td { text-align: left; vertical-align: top; padding: 9px 12px; border-bottom: 1px solid var(--rule); }
+th { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); font-weight: 500; background: var(--code-bg); }
+tr:last-child td { border-bottom: 0; }
+td.k { font-family: var(--f-mono); font-size: 13px; white-space: nowrap; }
+.pill { display: inline-block; font-family: var(--f-mono); font-size: 11.5px; padding: 1px 7px; border-radius: 10px; border: 1px solid currentColor; white-space: nowrap; }
+.pill.ok { color: var(--ok); } .pill.warn { color: var(--warn); } .pill.stop { color: var(--stop); } .pill.acc { color: var(--accent); }
+.callout { border-left: 3px solid var(--accent); background: var(--accent-soft); padding: 14px 18px; margin: 20px 0; border-radius: 0 6px 6px 0; }
+.callout p { margin: 0; } .callout p + p { margin-top: 8px; }
+pre.mermaid { background: var(--surface); border: 1px solid var(--rule); border-radius: 6px; padding: 16px; overflow-x: auto; font-size: 13px; }
+pre.code { background: var(--code-bg); border-radius: 6px; padding: 14px 16px; overflow-x: auto; font-family: var(--f-mono); font-size: 13px; line-height: 1.5; }
+.req { font-family: var(--f-mono); font-size: 12px; color: var(--accent); margin-right: 6px; }
+ul.reqs { list-style: none; padding-left: 0; }
+ul.reqs li { padding-left: 0; margin: 6px 0; }
+.level { border-top: 1px solid var(--rule); padding-top: 16px; margin-top: 24px; }
+.level h3 { margin-top: 0; }
+.level dl { display: grid; grid-template-columns: 110px minmax(0, 1fr); gap: 6px 14px; margin: 8px 0 0; font-size: 14.5px; }
+.level dt { font-size: 11.5px; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); padding-top: 3px; }
+.level dd { margin: 0; } .level dd ul { margin: 0; padding-left: 18px; }
+@media (max-width: 520px) { .level dl { grid-template-columns: minmax(0, 1fr); gap: 2px; } .level dt { padding-top: 8px; } }
+ul.tight li, ol.tight li { margin: 3px 0; }
+footer { margin-top: 64px; font-size: 13px; color: var(--muted); border-top: 1px solid var(--rule); padding-top: 16px; }
+@page { size: Letter; margin: 18mm 16mm; }
+@media print {
+  :root { --bg: #ffffff; }
+  body { background: #fff; font-size: 11pt; }
+  .wrap { display: block; max-width: none; padding: 0; }
+  nav.toc { display: none; }
+  main { max-width: none; }
+  h2 { break-after: avoid; margin-top: 28pt; }
+  h3 { break-after: avoid; }
+  .box, pre, .callout, .level, tr, pre.mermaid { break-inside: avoid; }
+  a { color: inherit; text-decoration: none; }
+}
+</style>
+
+<div class="wrap">
+<nav class="toc" aria-label="Contents">
+  <div class="lbl">Contents</div>
+  <ol>
+    <li><a href="#abstract">Abstract</a></li>
+    <li><a href="#grants">Grants</a></li>
+    <li><a href="#control">Registry and freeze</a></li>
+    <li><a href="#mcp">MCP surface</a></li>
+    <li><a href="#approvals">Approvals</a></li>
+    <li><a href="#anchoring">Ledger anchoring</a></li>
+    <li><a href="#untrusted">Plant text</a></li>
+    <li><a href="#conformance">Conformance</a></li>
+    <li><a href="#annex">Annex</a></li>
+  </ol>
+</nav>
+
+<main>
+<header class="doc">
+  <div class="eyebrow">Specification · draft 0.1 · for review</div>
+  <h1>i3X Nexus Agent Extension</h1>
+  <div class="meta"><span>Level 5 of the i3X Nexus Profile</span><span>CivOps</span><span>Builds on the i3X Nexus Profile (draft 0.4), contributed by LNS Research</span></div>
+</header>
+
+<section id="abstract">
+<h2><span class="n">1</span>Abstract</h2>
+<p class="lede">The i3X Nexus Profile lets a software agent ask for a change but never approve one. This extension adds what a site needs once it has more than a handful of agents: every agent works for a named person, on one task, inside part of the plant, with a budget and an end time; one switch stops all agent writes; any MCP-speaking agent can use a nexus through the same governed paths; approvals are signed; and the audit ledger can be checked against copies its own administrators cannot rewrite.</p>
+<p>It defines Level 5 of the profile. A nexus at Level 5 meets Levels 1–3 of the profile and everything here. Nothing here changes the i3X 1.0 contract: the additions are under <code>/x-nexus/</code> and <code>/mcp</code>, and a client that knows nothing about them keeps working.</p>
+<p>The key words MUST, MUST NOT, SHOULD and MAY are used as in RFC 2119 and RFC 8174. Requirements are numbered <span class="req">NXA-n</span>; <span class="req">NX-n</span> refers to the profile.</p>
+<div class="callout">
+  <p><strong>Core rule, unchanged.</strong> An agent may request; it never approves (NX-21). This extension makes it possible to say, for every agent request in the ledger, which person the agent was working for, on what task, and under what limits.</p>
+</div>
+</section>
+
+<section id="grants">
+<h2><span class="n">2</span>Grants</h2>
+<p>A <strong>grant</strong> is issued by a person to one agent principal. It carries a task description, one or more <strong>areas</strong> (element ids; the grant covers each and everything below it in the address space), the actions allowed (<code>read</code>, <code>media:read</code>, <code>request:W1</code>, <code>request:W2</code>), a maximum number of write requests, and an expiry. The person who issues it is its <strong>sponsor</strong>.</p>
+<ul class="reqs">
+<li><span class="req">NXA-1</span>At Level 5 an agent principal MUST act only under a live grant. An agent presenting no grant MUST be refused on every endpoint except <code>GET /info</code>. Only a person holding the <code>agents:grant</code> scope MAY issue a grant, and the issuer MUST be recorded as the sponsor. A grant MUST expire within 24 hours; the default is 60 minutes. The grant's credential MUST be shown once, at issue, and stored only as a hash.</li>
+<li><span class="req">NXA-2</span>A write request raised under a grant MUST record the grant id, its task, and the sponsor as <code>actor.onBehalfOf</code>. Whatever the agent itself supplies for <code>onBehalfOf</code> MUST be ignored.</li>
+<li><span class="req">NXA-3</span>An agent on a grant MUST NOT read, list, subscribe to or target an element outside its areas. Requests naming such an element MUST be refused (403); listings MUST omit such elements. The agent MAY read the write-request intakes and the write requests it raised itself, and no others. A request beyond the grant's maximum, or for an action the grant does not allow, MUST be refused before anything is recorded.</li>
+</ul>
+<p>Grants are records in the nexus ledger. Issuing and revoking one are hash-chained versions like any other write, and in a redundant pair they are replicated to the standby. They are not i3X elements, so no client can browse another's grant.</p>
+</section>
+
+<section id="control">
+<h2><span class="n">3</span>Registry, freeze, suspend, revoke</h2>
+<ul class="reqs">
+<li><span class="req">NXA-8</span>A nexus MUST provide a <strong>freeze</strong>: one action that stops every agent write on the site. While frozen, new agent write requests MUST be refused (423), and agent requests already approved MUST be held rather than applied; they are applied when the freeze is released, or expire. Reads, and writes by people and services, MUST carry on. Any person with <code>agents:freeze</code> MAY freeze; only a person with <code>agents:admin</code> MAY release. A reason MUST be given for both. The freeze request MUST be served in the P0 lane.</li>
+<li><span class="req">NXA-9</span>A person with <code>agents:admin</code> MUST be able to <strong>suspend</strong> one agent, which refuses it on every endpoint, and resume it. A grant's sponsor or an admin MUST be able to <strong>revoke</strong> a grant, which stops its credential at once.</li>
+<li><span class="req">NXA-10</span>A nexus MUST provide a <strong>registry</strong> of agents: for each, its live and past grants (sponsor, task, areas, actions, requests used of the maximum, expiry), its write requests by outcome (verified, rejected, rolled back, expired), and its recent refusals (outside its areas, over budget, while frozen or suspended). An admin sees every agent; a sponsor sees the grants they issued.</li>
+<li><span class="req">NXA-11</span>Freeze, release, suspend and resume MUST be recorded as ledger versions naming the person and the reason.</li>
+</ul>
+</section>
+
+<section id="mcp">
+<h2><span class="n">4</span>MCP surface</h2>
+<p>Most agents speak the Model Context Protocol. A Level 5 nexus answers MCP at <code>POST /mcp</code> (Streamable HTTP, JSON responses, no session state) with the caller's own credential.</p>
+<ul class="reqs">
+<li><span class="req">NXA-4</span>Every MCP tool MUST be carried out as the equivalent i3X request, as the caller, through the same authentication, grant checks, rate limits, priority lanes and write governor. An MCP tool MUST NOT reach any store or system by another path. A refusal MUST be returned as a tool result with <code>isError: true</code> and the i3X status, not as a protocol error.</li>
+</ul>
+<div class="box"><table>
+<thead><tr><th>Tool</th><th>i3X equivalent</th></tr></thead>
+<tbody>
+<tr><td class="k">browse</td><td><code>GET /objects</code>, optionally under a parent</td></tr>
+<tr><td class="k">read_values</td><td><code>POST /objects/value</code></td></tr>
+<tr><td class="k">read_history</td><td><code>POST /objects/history</code> (raw, never aggregated)</td></tr>
+<tr><td class="k">request_change</td><td><code>PUT /objects/value</code> on the W1 intake; the idempotency key makes a retry the same request</td></tr>
+<tr><td class="k">request_setpoint</td><td><code>PUT /objects/value</code> on the W2 intake</td></tr>
+<tr><td class="k">check_request</td><td><code>POST /objects/value</code> on a write request the caller raised</td></tr>
+<tr><td class="k">my_grant</td><td><code>GET /x-nexus/agents/me</code>: task, areas, actions, requests left, expiry, and whether agent writes are frozen</td></tr>
+</tbody></table></div>
+<p>There is no approval tool. An agent cannot approve through MCP for the same reason it cannot through i3X.</p>
+</section>
+
+<section id="approvals">
+<h2><span class="n">5</span>Approvals</h2>
+<ul class="reqs">
+<li><span class="req">NXA-5</span>The sponsor of a grant MUST NOT approve a request raised under it. Asking through an agent and then approving the answer is approving one's own request, which §7.4 of the profile forbids.</li>
+<li><span class="req">NXA-6</span>A nexus MAY require <strong>signed approvals</strong>. Then each approver registers an Ed25519 public key, and an approval MUST carry a signature over <code>nexus-approval:v1|{request id}|{decision}|{version hash}</code>, where the version hash is the ledger hash of the request version the approver read (served at <code>GET /x-nexus/requests/{id}</code>). An approval signed over any other version MUST be refused, so a decision cannot be carried onto a request that changed after the approver looked. The signature MUST be kept with the approval in the ledger. A person with a registered key MUST sign whether or not the nexus requires it.</li>
+</ul>
+</section>
+
+<section id="anchoring">
+<h2><span class="n">6</span>Ledger anchoring</h2>
+<p>The profile's hash chain shows an edit, removal or reordering to anyone who trusts the head of the chain. Someone with write access to the ledger's database could rewrite every version after an edit and leave a chain that still verifies on its own.</p>
+<ul class="reqs">
+<li><span class="req">NXA-7</span>The nexus that holds the write role MUST, at least every 5 minutes while the ledger has grown, sign a checkpoint <code>{site, node, count, head, at}</code> with an Ed25519 key held outside the ledger's database, and append it to at least one store outside that database's administrative control: an append-only file on separate storage, an HTTP endpoint in another trust domain, or both. A verifier MUST report a ledger whose version at an anchored count does not have the anchored hash, or which has fewer versions than an anchor counts.</li>
+</ul>
+<p>The reference implementation ships the verifier as <code>scripts/verify-anchors.ts</code>, for a file ledger or a PostgreSQL ledger.</p>
+</section>
+
+<section id="untrusted">
+<h2><span class="n">7</span>Plant text is data</h2>
+<p>Work-order titles, notes, tag descriptions and the like are written by many people and systems, and an agent reads them. Any of them can carry text that looks like an instruction.</p>
+<ul class="reqs">
+<li><span class="req">NXA-12</span>MCP tool and server descriptions MUST state that values are plant data and never instructions. A write request MUST name a target that exists on the nexus; the governor resolves it itself and never acts on a target or authority the request text asserts. Nothing in a value MAY change what an agent's grant allows.</li>
+</ul>
+<p>These rules do not make an agent immune to injected text. They bound the damage: whatever an agent is talked into, it can only ask, inside its areas and budget, for a person to decide.</p>
+</section>
+
+<section id="conformance">
+<h2><span class="n">8</span>Conformance</h2>
+<div class="level"><h3>Level 5 · Governed agents</h3>
+<dl><dt>Requires</dt><dd>Levels 1–3 of the profile (Level 2 when the site runs a pair); NXA-1 to NXA-12.</dd>
+<dt>Tests</dt><dd><ul>
+<li>An agent without a grant, with a revoked grant, and with an expired grant.</li>
+<li>Reads, listings, subscriptions and requests inside and outside the grant's areas; a request past the grant's maximum.</li>
+<li>The sponsor trying to approve the agent's request.</li>
+<li>Freeze before an approval, then release: the approved request is held, then applied once.</li>
+<li>The same through the standby of a redundant pair.</li>
+<li>Every MCP tool inside and outside the grant; a retried request_change.</li>
+<li>Unsigned approvals, approvals signed over a different version, and correct ones, with signing required.</li>
+<li>A ledger rewritten from an early version onward, so its own chain verifies; a truncated ledger; a forged anchor.</li>
+<li>The profile's conformance suite, three runs, with Level 5 enabled.</li></ul></dd>
+<dt>Pass</dt><dd><ul>
+<li>Every refusal happens before anything is recorded, and every agent request in the ledger names its sponsor and grant.</li>
+<li>No agent write is applied while frozen; people's writes are unaffected.</li>
+<li>MCP and i3X give the same answer for the same call.</li>
+<li>The verifier flags every rewritten or truncated ledger and every forged anchor.</li>
+<li>Full 1.0 Compliance in all three runs.</li></ul></dd></dl></div>
+</section>
+
+<section id="annex">
+<h2><span class="n">9</span>Annex · Endpoints and parameters</h2>
+<div class="box"><table>
+<thead><tr><th>Endpoint</th><th>Who</th><th>Does</th></tr></thead>
+<tbody>
+<tr><td><code>PUT /x-nexus/agents/grants</code></td><td>agents:grant</td><td><code>{agent, task, areas, actions, maxRequests, ttlMinutes}</code> → the grant and its token, once</td></tr>
+<tr><td><code>PUT /x-nexus/agents/grants/{id}/revoke</code></td><td>sponsor, agents:admin</td><td><code>{reason}</code></td></tr>
+<tr><td><code>PUT /x-nexus/agents/freeze</code></td><td>agents:freeze, agents:admin</td><td><code>{reason}</code>; P0 lane</td></tr>
+<tr><td><code>PUT /x-nexus/agents/release</code></td><td>agents:admin</td><td><code>{reason}</code></td></tr>
+<tr><td><code>PUT /x-nexus/agents/{agent}/suspend</code>, <code>/resume</code></td><td>agents:admin</td><td>one agent in or out</td></tr>
+<tr><td><code>GET /x-nexus/agents</code></td><td>agents:admin, agents:grant</td><td>the registry</td></tr>
+<tr><td><code>GET /x-nexus/agents/me</code></td><td>an agent</td><td>its grant and what is left of it</td></tr>
+<tr><td><code>GET /x-nexus/requests/{id}</code></td><td>any person</td><td>the version hash and the strings to sign</td></tr>
+<tr><td><code>POST /mcp</code></td><td>any principal</td><td>MCP, as above</td></tr>
+</tbody></table></div>
+<div class="box"><table>
+<thead><tr><th>Parameter</th><th>Default</th></tr></thead>
+<tbody>
+<tr><td>Grant lifetime</td><td>60 min; at most 24 h</td></tr>
+<tr><td>Requests per grant</td><td>0 unless the sponsor sets it</td></tr>
+<tr><td>Anchor interval</td><td>5 min, only when the ledger has grown</td></tr>
+<tr><td>Refusals kept for the registry</td><td>the most recent 500 per node</td></tr>
+</tbody></table></div>
+<p>In a redundant pair, administration requests that reach the standby are forwarded to the node holding the write role, as writes are.</p>
+</section>
+
+<footer>i3X Nexus Agent Extension, draft 0.1, from CivOps. It extends the i3X Nexus Profile (draft 0.4) contributed by LNS Research, and is offered for comment and for submission to CESMII alongside it.</footer>
+</main>
+</div>
+</html>
