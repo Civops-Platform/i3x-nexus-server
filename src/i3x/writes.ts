@@ -49,6 +49,7 @@ export function mergeRecord(attrs: AttributeDef[], base: unknown, incoming: unkn
 
 import type { Governor } from "../governance/governor";
 import { W1_INTAKE, W2_INTAKE } from "./fabric";
+import { LIMIT_TYPE } from "../governance/authority";
 
 export interface WriteDeps {
   fabric: NexusFabric;
@@ -117,6 +118,12 @@ export async function writeOne(d: WriteDeps, p: Principal, update: unknown, elem
   }
 
   if (t.write !== "W0") return { ok: false, status: 403, detail: `${elementId} is not writable` };
+  if (t.id === LIMIT_TYPE) {
+    // NX-28: a limit is never changed by a plain write, not even by the namespace owner.
+    return { ok: false, status: 403, detail: d.governor
+      ? `${elementId} is an authority limit. Change it through a WriteRequest naming it as the target: PUT ${W1_INTAKE}; it is approved one level above the limit's owner (NX-28)`
+      : `${elementId} is an authority limit; this nexus has no write governor, so limits change only in the site config (NX-28)` };
+  }
   if (!owns(p, t.namespaceUri)) {
     return { ok: false, status: 403, detail: `principal ${p.id} does not own ${t.namespaceUri}; a W0 write needs ownership of the type's namespace` };
   }

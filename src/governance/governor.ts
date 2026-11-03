@@ -20,7 +20,7 @@
 import { createHash, createPublicKey, verify as cryptoVerify } from "node:crypto";
 import type { Principal } from "../core/auth";
 import type { RecordStore, RecordVersion } from "../core/records";
-import { approverRolesFor, escalationOf, parseLimit, type AuthorityLimit, type Escalation } from "./authority";
+import { AUTHORITY_SYSTEM, approverRolesFor, escalationOf, limitChangeProblem, parseLimit, type AuthorityLimit, type Escalation } from "./authority";
 import type { ExternalRecord, SystemAdapter } from "./adapters";
 
 export const W1_INTAKE = "nexus:intake:W1";
@@ -161,6 +161,12 @@ export class Governor {
       if (!prior) return { ok: false, status: 404, detail: `${targetId} no longer exists in ${t.system}` };
     }
     const keys = Object.keys(proposed);
+    // NX-28: the target is an authority limit. Validated now, so a bad change is refused before anyone is asked to approve it.
+    const limitChange = t.system === AUTHORITY_SYSTEM ? parseLimit(prior?.fields) : null;
+    if (t.system === AUTHORITY_SYSTEM) {
+      const why = limitChange ? limitChangeProblem(prior!.fields, proposed) : "the current limit is not valid";
+      if (why) return { ok: false, status: 422, detail: why };
+    }
     if (tier === "W2") {
       if (keys.length !== 1 || keys[0] !== "value") return { ok: false, status: 400, detail: "a setpoint request proposes exactly { value }" };
       if (prior?.version === "not-good") return { ok: false, status: 409, detail: `${targetId}/${field} is not reading Good; a setpoint is never written blind` };
@@ -176,18 +182,19 @@ export class Governor {
       else return { ok: false, status: 400, detail: "creating a record needs compensation.proposed (how to undo it), or reversible: false" };
     }
 
-    const matter = compensates ? compensates.matter : {
+    const matter = compensates ? compensates.matter : limitChange ? { site: limitChange.site, exceptionType: limitChange.exceptionType, exposureUsd: null, boundaryTriggers: [] } : {
       site: this.d.site,
       exceptionType: typeof i.exceptionType === "string" ? i.exceptionType : "",
       exposureUsd: typeof i.exposureUsd === "number" ? i.exposureUsd : null,
       boundaryTriggers: Array.isArray(i.boundaryTriggers) ? i.boundaryTriggers.filter((x: unknown): x is string => typeof x === "string") : [],
     };
     if (!matter.exceptionType) return { ok: false, status: 400, detail: "exceptionType is required: it selects the authority limit" };
-    const found = this.findLimit(matter.exceptionType);
-    const escalation = escalationOf(found?.limit ?? null, matter);
+    const found = limitChange ? { elementId: targetId, limit: limitChange } : this.findLimit(matter.exceptionType);
+    const escalation = limitChange ? "escalates" : escalationOf(found?.limit ?? null, matter);
     let approverRoles = approverRolesFor(found?.limit ?? null, escalation, matter.exposureUsd);
-    if (!reversible && approverRoles) {
-      // NX-35: one level above the owner. A limit that names no such role cannot approve it.
+    if ((limitChange || !reversible) && approverRoles) {
+      // NX-35, and NX-28 for a change to the limit itself: one level above the owner.
+      // A limit that names no such role cannot approve it.
       const above = found!.limit.aboveOwnerRole;
       approverRoles = above ? [above] : null;
     }
@@ -207,7 +214,7 @@ export class Governor {
       compensates: compensates ? i.compensates : null,
       idempotencyKey: i.idempotencyKey,
       status: approverRoles ? "requested" : "rejected",
-      statusDetail: approverRoles ? null : (found ? "irreversible, and the limit names no role above its owner (NX-35)" : `no decision right: no authority limit for ${this.d.site} / ${matter.exceptionType}`),
+      statusDetail: approverRoles ? null : limitChange ? "the limit names no role above its owner, so it can be changed only in the site config (NX-28)" : (found ? "irreversible, and the limit names no role above its owner (NX-35)" : `no decision right: no authority limit for ${this.d.site} / ${matter.exceptionType}`),
       approvals: [], applied: null, verification: null,
       expiresAt: new Date(this.now() + (tier === "W2" ? (this.d.w2ExpiryMs ?? 15 * 60_000) : (this.d.expiryMs ?? 4 * 3600_000))).toISOString(),
     };

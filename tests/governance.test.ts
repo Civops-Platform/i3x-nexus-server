@@ -115,6 +115,62 @@ test("escalation rule and approver selection", async () => {
   } finally { await s.stop(); }
 });
 
+test("NX-28: an authority limit cannot be widened by the party it constrains", async () => {
+  const s = await setup();
+  const LIMIT = "limit:maintenance-reprioritisation";
+  const limit = async () => (await s.call("POST", "/objects/value", { elementIds: [LIMIT] }, T.reader)).body.results[0].result.value;
+  const change = (key: string, proposed: Record<string, unknown>, extra: Record<string, unknown> = {}) =>
+    ({ idempotencyKey: key, target: { elementId: LIMIT }, proposed, ...extra });
+  try {
+    // A plain write is refused, even from the namespace owner, and even from the limit's owner.
+    for (const tok of [T.authority, T.manager]) {
+      const w = await s.put(LIMIT, { delegatedLimitUsd: 1e9 }, tok);
+      assert.equal(w.item.responseDetail.status, 403, w.item.responseDetail.detail);
+    }
+    assert.equal((await limit()).delegatedLimitUsd, 5000);
+
+    // The owner asks to widen their own limit. Whatever the request claims, it is the
+    // limit's own matter, it escalates, and only the role above the owner may approve.
+    const r = await s.request(change("widen", { delegatedLimitUsd: 50000, approverRoles: ["maintenance-planner", "maintenance-manager"] },
+      { exceptionType: "something-else", exposureUsd: 1 }), T.manager);
+    assert.equal(r.item.success, true, JSON.stringify(r.body));
+    let v = await s.wr(r.id!);
+    assert.equal(v.status, "requested");
+    assert.equal(v.matter.exceptionType, "maintenance-reprioritisation");
+    assert.equal(v.authority.escalation, "escalates");
+    assert.deepEqual(v.authority.approverRoles, ["plant-manager"]);
+    assert.equal(v.authority.limitRef, LIMIT);
+    assert.equal((await s.put(r.id!, { decision: "approve" }, T.manager)).item.responseDetail.status, 403, "the requester cannot approve");
+    assert.equal((await s.put(r.id!, { decision: "approve" }, T.planner)).item.responseDetail.status, 403, "an approver under the limit cannot widen it");
+    assert.equal((await s.put(r.id!, { decision: "approve" }, T.agent)).item.responseDetail.status, 403, "an agent never approves");
+    assert.equal((await limit()).delegatedLimitUsd, 5000, "nothing applied before approval");
+
+    // One level up approves: applied, read back, and the change is in the ledger.
+    assert.equal((await s.put(r.id!, { decision: "approve" }, T.plant)).item.success, true);
+    v = await s.wr(r.id!);
+    assert.equal(v.status, "verified", v.statusDetail);
+    assert.equal((await limit()).delegatedLimitUsd, 50000);
+    assert.equal(await s.nexus.records.verify(), null, "hash chain intact");
+
+    // Rolling the change back is governed the same way.
+    const back = await s.request({ idempotencyKey: "unwiden", compensates: r.id }, T.manager);
+    assert.deepEqual((await s.wr(back.id!)).authority.approverRoles, ["plant-manager"]);
+    assert.equal((await s.put(back.id!, { decision: "approve" }, T.plant)).item.success, true);
+    assert.equal((await s.wr(back.id!)).status, "verified");
+    assert.equal((await limit()).delegatedLimitUsd, 5000);
+
+    // Even the role above the owner needs a second principal: plant-1 cannot raise and approve.
+    const own = await s.request(change("plant-self", { materialityThresholdUsd: 1e9 }), T.plant);
+    assert.equal((await s.put(own.id!, { decision: "approve" }, T.plant)).item.responseDetail.status, 403);
+
+    // A change that would turn the limit into a different one is refused before anyone approves it.
+    for (const [k, p] of [["ident", { exceptionType: "capex-approval" }], ["site", { site: "elsewhere" }], ["bad", { delegatedLimitUsd: "lots" }]] as const) {
+      const bad = await s.request(change(k, p), T.manager);
+      assert.equal(bad.item.responseDetail.status, 422, `${k}: ${bad.item.responseDetail.detail}`);
+    }
+  } finally { await s.stop(); }
+});
+
 test("freshness: a record that moved after the request is not overwritten", async () => {
   const s = await setup();
   try {
