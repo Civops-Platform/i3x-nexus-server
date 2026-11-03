@@ -69,3 +69,50 @@ export function parseLimit(v: unknown): AuthorityLimit | null {
     ...(typeof o.aboveOwnerRole === "string" ? { aboveOwnerRole: o.aboveOwnerRole } : {}),
   };
 }
+
+// ── Changing a limit (NX-28) ─────────────────────────────────────────────
+//
+// A limit constrains the people it names, so they must not be able to widen it. A
+// change to a limit is a governed request like any other W1 write, with its target
+// the limit itself and its approver fixed one level above the limit's owner
+// (aboveOwnerRole, as NX-35 does for irreversible writes). A plain W0 write to a
+// limit is refused. A limit that names no role above its owner can be changed only
+// in the site config.
+
+import type { RecordStore } from "../core/records";
+import type { ApplyResult, ExternalRecord, SystemAdapter } from "./adapters";
+
+export const AUTHORITY_SYSTEM = "nexus:authority";
+export const LIMIT_TYPE = "AuthorityLimit";
+
+/** Why a proposed change to `current` is not a valid limit for the same site and exception type, or null. */
+export function limitChangeProblem(current: Record<string, unknown>, proposed: Record<string, unknown>): string | null {
+  const before = parseLimit(current);
+  const after = parseLimit({ ...current, ...proposed });
+  if (!before || !after) return "the result would not be a valid AuthorityLimit (site, exceptionType, ownerRole and both thresholds are required)";
+  if (after.site !== before.site || after.exceptionType !== before.exceptionType) return "a limit's site and exceptionType are its identity; publish a new limit in the site config instead";
+  return null;
+}
+
+/** The nexus's own AuthorityLimit records, presented to the governor as a system of record. */
+export class LimitAdapter implements SystemAdapter {
+  readonly id = AUTHORITY_SYSTEM;
+  constructor(private records: () => RecordStore, private isLimit: (elementId: string) => boolean) {}
+
+  async list(): Promise<ExternalRecord[]> { return []; }
+
+  async read(recordId: string): Promise<ExternalRecord | null> {
+    const v = this.isLimit(recordId) ? this.records().current(recordId) : undefined;
+    return v ? { id: recordId, version: String(v.version), fields: { ...(v.value as Record<string, unknown>) } } : null;
+  }
+
+  async apply(recordId: string | null, fields: Record<string, unknown>, ifVersion: string | null): Promise<ApplyResult> {
+    const cur = recordId ? await this.read(recordId) : null;
+    if (!cur) return { ok: false, stale: false, status: 404, detail: "limits are created in the site config, not through a write request" };
+    if (ifVersion !== null && cur.version !== ifVersion) return { ok: false, stale: true, status: 409, detail: `limit is at version ${cur.version}` };
+    const why = limitChangeProblem(cur.fields, fields);
+    if (why) return { ok: false, stale: false, status: 422, detail: why };
+    const v = await this.records().write(recordId!, { ...cur.fields, ...fields }, "nexus:governor", undefined, `${recordId}:limit-change:${cur.version}`);
+    return { ok: true, record: { id: recordId!, version: String(v.version), fields: { ...(v.value as Record<string, unknown>) } } };
+  }
+}

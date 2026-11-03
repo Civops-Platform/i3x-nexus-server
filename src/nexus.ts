@@ -51,6 +51,7 @@ import { AgentControl } from "./agents/control";
 import { handleMcp, type Dispatched } from "./agents/mcp";
 import { Anchorer, type AnchorOptions } from "./core/anchor";
 import { CmmsRestAdapter, type SystemAdapter } from "./governance/adapters";
+import { AUTHORITY_SYSTEM, LIMIT_TYPE, LimitAdapter } from "./governance/authority";
 import { SystemProjection } from "./governance/projection";
 import { SetpointAdapter, envelopeViolation, SETPOINT_SYSTEM, type Envelope } from "./governance/setpoint";
 import { IgnitionSqlHistorian, type HistorianAdapter } from "./history/ignition";
@@ -203,14 +204,16 @@ export class Nexus {
       if (projection) projection.onStructureChange = () => this.fabric.rebuild();
       this.projection = projection;
       const sp = this.setpoints;
+      const isLimit = (id: string) => o.config.objects.some((x) => x.id === id && x.typeId === LIMIT_TYPE);
       this.governor = new Governor({
         records: () => this.records,
         site: o.config.site.id,
-        resolveTarget: (id) => projection?.resolve(id) ?? null,
+        resolveTarget: (id) => (isLimit(id) ? { system: AUTHORITY_SYSTEM, recordId: id } : projection?.resolve(id) ?? null),
         resolveSetpoint: (id, field) => (sp?.has(`${id}/${field}`) ? { system: SETPOINT_SYSTEM, recordId: `${id}/${field}` } : null),
         envelopeCheck: (attr, proposed, current) => envelopeViolation(sp?.envelopeOf(attr) ?? {}, proposed, current),
         w2Suspended: () => this.w2Suspended(),
-        adapters: new Map<string, import("./governance/adapters").SystemAdapter>([...systems.map((s) => [s.id, s.adapter] as const), ...(sp ? [[SETPOINT_SYSTEM, sp] as const] : [])]),
+        adapters: new Map<string, import("./governance/adapters").SystemAdapter>([...systems.map((s) => [s.id, s.adapter] as const), ...(sp ? [[SETPOINT_SYSTEM, sp] as const] : []),
+          [AUTHORITY_SYSTEM, new LimitAdapter(() => this.records, isLimit)]]),
         limits: () => o.config.objects.filter((x) => x.typeId === "AuthorityLimit").map((x) => ({ elementId: x.id, value: this.records.current(x.id)?.value })),
         onChange: () => this.fabric.rebuild(),
         agentCheck: (p, tier, target, used) => this.agents.checkRequest(p, tier, target, used),
